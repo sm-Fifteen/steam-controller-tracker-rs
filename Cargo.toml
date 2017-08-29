@@ -1,0 +1,8 @@
+[package]
+name = "steam-controller-tracker-rs"
+version = "0.1.0"
+authors = ["sm-Fifteen <riboshom@hotmail.com>"]
+
+[dependencies]
+openmpt = "^0.2.0"
+libusb = "^0.3.0"
