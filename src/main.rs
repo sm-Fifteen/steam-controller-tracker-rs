@@ -1,11 +1,17 @@
+extern crate libusb;
+extern crate libusb_sys;
 extern crate clap;
 extern crate openmpt;
+extern crate byteorder;
 
 use std::fs::File;
 use std::error::Error;
 
 use openmpt::module::{Module, Logger};
 use clap::{App, Arg, ArgMatches};
+use device_io::DeviceManager;
+
+mod device_io;
 
 fn main() {
 	let matches = App::new("Steam Controller Tracker")
@@ -27,7 +33,9 @@ fn main() {
 }
 
 fn run(config: &mut AppConfig) {
-	println!("{}", config.module.get_num_patterns())
+	let mut libusb_context = libusb::Context::new().unwrap();
+	let mut dm = DeviceManager::new(&mut libusb_context);
+	println!("Returned : {:?}", dm.play_raw(1, 255, 255, 255));
 }
 
 struct AppConfig {

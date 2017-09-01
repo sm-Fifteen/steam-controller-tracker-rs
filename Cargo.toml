@@ -6,4 +6,6 @@ authors = ["sm-Fifteen <riboshom@hotmail.com>"]
 [dependencies]
 openmpt = "0.3.0"
 libusb = "0.3.0"
+libusb-sys = "^0.2"
+byteorder = "1"
 clap = "2.26.0"
