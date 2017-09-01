@@ -6,6 +6,8 @@ use libusb::{Direction,RequestType,Recipient, DeviceHandle};
 use libusb::Context;
 use libusb::Error;
 use byteorder::{LittleEndian, WriteBytesExt};
+use std::time::Duration;
+use music::{Note, Instrument};
 
 pub struct DeviceManager<'a> {
 	libusb_context: &'a Context,
@@ -52,6 +54,13 @@ impl<'a> DeviceManager<'a> {
 		Some((&mut self.device, (channel_num % 2) as u8))
 	}
 
+	pub fn play_note<I:Instrument>(&mut self, channel: u32, note: &Note, instr: &I, max_duration: Duration) -> Result<usize, Error> {
+		let (hi_period, lo_period) = instr.get_periods_for_note(note);
+		let cycle_count = instr.get_cycles_for_duration(note, max_duration);
+
+		self.play_raw(channel, hi_period, lo_period, cycle_count)
+	}
+
 	pub fn play_raw(&mut self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<usize, Error> {
 		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
 			println!("Device detected");
@@ -64,9 +73,9 @@ impl<'a> DeviceManager<'a> {
 				priority: NOTE_PRIORITY,
 			};
 
-			let timeout = ::std::time::Duration::from_secs(1);
+			let timeout = Duration::from_secs(1);
 			let req_type = ::libusb::request_type(Direction::Out, RequestType::Class, Recipient::Interface);
-			
+
 			device.write_control(
 				req_type,
 				::libusb_sys::LIBUSB_REQUEST_SET_CONFIGURATION,

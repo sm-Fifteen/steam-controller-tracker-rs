@@ -12,6 +12,7 @@ use clap::{App, Arg, ArgMatches};
 use device_io::DeviceManager;
 
 mod device_io;
+mod music;
 
 fn main() {
 	let matches = App::new("Steam Controller Tracker")
@@ -35,7 +36,11 @@ fn main() {
 fn run(config: &mut AppConfig) {
 	let mut libusb_context = libusb::Context::new().unwrap();
 	let mut dm = DeviceManager::new(&mut libusb_context);
-	println!("Returned : {:?}", dm.play_raw(1, 255, 255, 255));
+
+	let mut note = music::Note::new(59);
+	let mut instr = music::PulseWave::new(1, 1);
+
+	println!("Returned : {:?}", dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200)));
 }
 
 struct AppConfig {
