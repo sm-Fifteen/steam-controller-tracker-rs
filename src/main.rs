@@ -9,7 +9,6 @@ use std::error::Error;
 
 use openmpt::module::{Module, Logger};
 use clap::{App, Arg, ArgMatches};
-use device_io::DeviceManager;
 
 mod device_io;
 mod music;
@@ -34,13 +33,7 @@ fn main() {
 }
 
 fn run(config: &mut AppConfig) {
-	let mut libusb_context = libusb::Context::new().unwrap();
-	let mut dm = DeviceManager::new(&mut libusb_context);
-
-	let mut note = music::Note::new(59);
-	let mut instr = music::PulseWave::new(1, 1);
-
-	println!("Returned : {:?}", dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200)));
+	unimplemented!();
 }
 
 struct AppConfig {
@@ -62,5 +55,25 @@ impl AppConfig {
 		Ok(AppConfig {
 			module : module,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use libusb;
+	use super::{music, device_io};
+	use device_io::DeviceManager;
+
+	#[test]
+	fn test_beep() {
+		let mut libusb_context = libusb::Context::new().unwrap();
+		let mut dm = DeviceManager::new(&mut libusb_context);
+
+		let mut note = music::Note::new(59);
+		let mut instr = music::PulseWave::new(1, 1);
+
+		let ret_value = dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200));
+
+		ret_value.expect("Failed to send to device");
 	}
 }
