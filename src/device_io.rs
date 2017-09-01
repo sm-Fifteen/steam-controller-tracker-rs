@@ -2,7 +2,7 @@
 /// get interrupted when the user touches the controller
 const NOTE_PRIORITY:u8 = 1;
 
-use libusb::{Direction,RequestType,Recipient, DeviceHandle};
+use libusb::{Direction,RequestType,Recipient, Device, DeviceHandle};
 use libusb::Context;
 use libusb::Error;
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -11,8 +11,8 @@ use music::{Note, Instrument};
 
 pub struct DeviceManager<'a> {
 	libusb_context: &'a Context,
-	// TODO : Use vector instead
-	device: DeviceHandle<'a>,
+	devices: Vec<Device<'a>>,
+	handles: Vec<DeviceHandle<'a>>,
 }
 
 struct SCFeedbackPacket {
@@ -41,17 +41,43 @@ impl SCFeedbackPacket {
 
 impl<'a> DeviceManager<'a> {
 	pub fn new(libusb_context: &'a mut Context) -> DeviceManager<'a> {
-		let mut device = libusb_context.open_device_with_vid_pid(0x28de, 0x1102).expect("No matching device");
-		device.detach_kernel_driver(2);
+		let mut iter_list = libusb_context.devices().unwrap();
+		let mut iter = iter_list.iter();
+		let mut devices = Vec::<Device<'a>>::new();
+		let mut handles = Vec::<DeviceHandle<'a>>::new();
+
+		let matches = iter.filter(|device| {
+			match device.device_descriptor() {
+				Err(_) => false,
+				Ok(desc) => {
+					desc.vendor_id() == 0x28de &&
+					desc.product_id() == 0x1102
+				}
+			}
+		});
+
+		for device in matches {
+			if let Ok(mut handle) = device.open() {
+				handle.detach_kernel_driver(2);
+				devices.push(device);
+				handles.push(handle);
+			}
+			
+		}
 
 		DeviceManager {
 			libusb_context,
-			device,
+			devices,
+			handles,
 		}
 	}
 
 	fn get_device_channel(&mut self, channel_num: u32) -> Option<(&mut DeviceHandle<'a>, u8)> {
-		Some((&mut self.device, (channel_num % 2) as u8))
+		if let Some(mut handle) = self.handles.get_mut(channel_num as usize >> 1) {
+			Some((handle, (channel_num % 2) as u8))
+		} else {
+			None
+		}
 	}
 
 	pub fn play_note<I:Instrument>(&mut self, channel: u32, note: &Note, instr: &I, max_duration: Duration) -> Result<usize, Error> {
