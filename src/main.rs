@@ -69,7 +69,7 @@ mod tests {
 		let mut libusb_context = libusb::Context::new().unwrap();
 		let mut dm = DeviceManager::new(&mut libusb_context);
 
-		let mut note = music::Note::new(59);
+		let mut note = music::Note::new(96);
 		let mut instr = music::PulseWave::new(1, 1);
 
 		let ret_value = dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200));

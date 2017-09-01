@@ -1,5 +1,11 @@
 use std::time::Duration;
 
+const FLOAT_2:f32 = 2f32;
+// static MIDDLE_C_FREQ:f32 = 440f32 * FLOAT_2.powf(-9f32/12f32);
+static MIDDLE_C_FREQ:f32 = 261.625565;
+// static MIDDLE_C_IDX:i16 = ::openmpt::mod_command::ModCommand::middle_c() as i16;
+static MIDDLE_C_IDX:i16 = 61;
+
 const PERIOD_1HZ:u32 = 1_000_000; // 1 million microseconds
 
 // Could be a pulse, could be a frequency with a duty-cycle
@@ -9,7 +15,7 @@ pub trait Instrument {
 }
 
 pub struct Note {
-	semitone_idx: u8,
+	semitone_idx: i16,
 	// sub-semitone stuff
 }
 
@@ -19,12 +25,13 @@ pub struct PulseWave {
 }
 
 impl Note {
-	pub fn new(semitone_idx: u8) -> Note {
+	pub fn new(semitone_idx: i16) -> Note {
 		Note { semitone_idx }
 	}
 
 	pub fn get_frequency(&self) -> f32 {
-		1960f32
+		let rel_idx = (self.semitone_idx - MIDDLE_C_IDX) as f32;
+		MIDDLE_C_FREQ * FLOAT_2.powf(rel_idx/12f32)
 	}
 }
 
