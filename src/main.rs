@@ -12,6 +12,8 @@ use clap::{App, Arg, ArgMatches};
 
 mod device_io;
 mod music;
+mod module_parser;
+mod routines;
 
 fn main() {
 	let matches = App::new("Steam Controller Tracker")
@@ -33,7 +35,7 @@ fn main() {
 }
 
 fn run(config: &mut AppConfig) {
-	unimplemented!();
+	module_parser::parse_module(&mut config.module);
 }
 
 struct AppConfig {

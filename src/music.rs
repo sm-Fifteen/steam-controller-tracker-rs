@@ -14,6 +14,7 @@ pub trait Instrument {
 	fn get_cycles_for_duration(&self, note: &Note, duration: Duration) -> u16;
 }
 
+#[derive(Copy,Clone)]
 pub struct Note {
 	semitone_idx: i16,
 	// sub-semitone stuff
