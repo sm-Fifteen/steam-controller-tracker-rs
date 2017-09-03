@@ -4,12 +4,10 @@ extern crate clap;
 extern crate openmpt;
 extern crate byteorder;
 
-use std::fs::File;
-use std::error::Error;
+use clap::{App, Arg};
+use config::AppConfig;
 
-use openmpt::module::{Module, Logger};
-use clap::{App, Arg, ArgMatches};
-
+mod config;
 mod device_io;
 mod music;
 mod module_parser;
@@ -25,7 +23,7 @@ fn main() {
 			)
 			.get_matches();
 	
-	let config = AppConfig::from_opts(matches);
+	let config = config::AppConfig::from_opts(matches);
 	
 	if let Err(msg) = config {
         println!("Problem parsing arguments: {}", msg);
@@ -36,29 +34,7 @@ fn main() {
 }
 
 fn run(config: &mut AppConfig) {
-	module_parser::parse_module(&mut config.module);
-}
-
-struct AppConfig {
-	pub module : Module,
-}
-
-impl AppConfig {
-	fn from_opts(matches : ArgMatches) -> Result<AppConfig, String> {
-		let mut file = match File::open(matches.value_of("file").unwrap()) {
-			Err(e) => return Err(e.description().to_owned()),
-			Ok(f) => f
-		};
-
-		let module = match Module::create(&mut file, Logger::None, &[]) {
-			Err(_) => return Err(String::from("Failed to open file as tracker module")),
-			Ok(m) => m,
-		};
-		
-		Ok(AppConfig {
-			module : module,
-		})
-	}
+	module_parser::parse_module(config);
 }
 
 #[cfg(test)]

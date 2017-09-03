@@ -1,30 +1,29 @@
-use openmpt::module::Module;
+use super::AppConfig;
 use openmpt::module::iteration::{Pattern, Row, Cell};
 use openmpt::mod_command::*;
 
+use music::Instrument;
 use routines::Routine;
 
-struct RowParsingConfig {
+struct RowParsingConfig<'a> {
 	num_channels: i32,
-	channel_filter: Vec<i32>,
+	channel_filter: &'a [i32],
+	instruments: &'a [Instrument],
 }
 
-pub fn parse_module(module: &mut Module) {
+pub fn parse_module(config: &mut AppConfig) {
 	let mut next_pattern_order = 0;
 	let mut next_row_num = 0;
 
-	let num_channels = module.get_num_channels();
-
-	// Both num_channels and the filter are needed
-	// because global effects must still be parsed
 	let row_config = RowParsingConfig {
-		num_channels,
-		channel_filter: (0..num_channels).collect(),
+		instruments: &config.instruments,
+		num_channels: config.num_channels,
+		channel_filter: &config.channel_filter,
 	};
 
-	let mut routines = vec![Routine::StopNote; num_channels as usize];
+	let mut routines:Vec<Routine> = vec![Routine::StopNote; config.num_channels as usize];
 
-	while let Some(mut pattern) = module.get_pattern_by_order(next_pattern_order) {
+	while let Some(mut pattern) = config.module.get_pattern_by_order(next_pattern_order) {
 		while let Some(mut row) = pattern.get_row_by_number(next_row_num) {
 			parse_row(&mut row, &row_config, &mut routines);
 
