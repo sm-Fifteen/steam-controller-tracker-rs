@@ -50,16 +50,34 @@ fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<(Routi
 }
 
 fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_routines: &mut [(Routine, Instrument)]) {
-	let new_routine = match cell_data.note {
-		Note::Note(semitone_idx) => {
-			let note = ::music::Note::new(semitone_idx as i16);
-			Some((Routine::FlatNote{note}, instruments[cell_data.instr as usize -1]))
-		},
-		Note::Special(SpecialNote::KeyOff) | Note::Special(SpecialNote::NoteCut) | Note::Special(SpecialNote::Fade) => Some((Routine::StopNote, NO_INSTRUMENT)),
+	let instr = match cell_data.instr {
+		0 => NO_INSTRUMENT,
+		// Instrument indexing starts at 1
+		_ => instruments[cell_data.instr as usize -1],
+	};
+	
+	// Check for note stops early, no need to worry about them later
+	let mut new_routine = match cell_data.note {
+		Note::Special(SpecialNote::KeyOff)  |
+		Note::Special(SpecialNote::NoteCut) |
+		Note::Special(SpecialNote::Fade)   => Some(Routine::StopNote),
 		_ => None,
 	};
 
+	if new_routine.is_none() {
+		// TODO : Placeholder, change this block to use effects instead
+		new_routine = match cell_data.note {
+			Note::Note(semitone_idx) => {
+				let note = ::music::Note::new(semitone_idx as i16);
+				Some(Routine::FlatNote{note})
+			},
+			_ => {
+				None
+			}
+		};
+	}
+
 	if let Some(new_routine) = new_routine {
-		out_routines[0] = new_routine;
+		out_routines[0] = (new_routine, instr);
 	}
 }
