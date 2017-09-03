@@ -1,6 +1,7 @@
 /// Touch feedback is 0, priority 1 means notes don't
 /// get interrupted when the user touches the controller
 const NOTE_PRIORITY:u8 = 1;
+const REPEAT_FOREVER:u16 = 0x7FFF;
 
 use libusb::{Direction,RequestType,Recipient, Device, DeviceHandle};
 use libusb::Context;
@@ -80,10 +81,14 @@ impl<'a> DeviceManager<'a> {
 		}
 	}
 
-	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Duration) -> Result<usize, Error> {
-		let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, max_duration);
-
-		self.play_raw(channel, hi_period, lo_period, cycle_count)
+	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<usize, Error> {
+		if let Some(duration) = max_duration {
+			let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, duration);
+			self.play_raw(channel, hi_period, lo_period, cycle_count)
+		} else {
+			let (hi_period, lo_period) = instr.get_periods_for_note(note);
+			self.play_raw(channel, hi_period, lo_period, REPEAT_FOREVER)
+		}
 	}
 
 	pub fn play_raw(&mut self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<usize, Error> {

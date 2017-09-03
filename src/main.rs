@@ -5,6 +5,7 @@ extern crate openmpt;
 extern crate byteorder;
 
 use clap::{App, Arg};
+use libusb::Context;
 use config::AppConfig;
 
 mod config;
@@ -51,7 +52,7 @@ mod tests {
 		let mut note = music::Note::new(96);
 		let mut instr = music::Instrument::PulseWave(1, 1);
 
-		let ret_value = dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200));
+		let ret_value = dm.play_note(1, &note, &instr, Some(::std::time::Duration::from_millis(200)));
 
 		ret_value.expect("Failed to send to device");
 	}
