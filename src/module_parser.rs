@@ -2,7 +2,7 @@ use openmpt::module::Module;
 use openmpt::module::iteration::{Pattern, Row, Cell};
 use openmpt::mod_command::*;
 
-use routines::{Routine, StopNote};
+use routines::Routine;
 
 struct RowParsingConfig {
 	num_channels: i32,
@@ -22,10 +22,7 @@ pub fn parse_module(module: &mut Module) {
 		channel_filter: (0..num_channels).collect(),
 	};
 
-	let mut routines:Vec<Box<Routine>> = Vec::new();
-	for _ in &row_config.channel_filter {
-		routines.push(Box::new(StopNote::new()));
-	}
+	let mut routines = vec![Routine::StopNote; num_channels as usize];
 
 	while let Some(mut pattern) = module.get_pattern_by_order(next_pattern_order) {
 		while let Some(mut row) = pattern.get_row_by_number(next_row_num) {
@@ -38,12 +35,13 @@ pub fn parse_module(module: &mut Module) {
 	}
 }
 
-fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<Box<Routine>>) {
+// Missing instrument refs
+fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<Routine>) {
 	// TODO : Check global effects (set speed/tempo, break pattern, goto order)
 	// FIXME : Not ideal to play same channel multiple times
 	for (idx, channel_num) in config.channel_filter.iter().enumerate() {
 		let mut cell = row.get_cell_by_channel(*channel_num).expect(&format!("Not cell at channel {}", *channel_num));
-		let routine:&mut [Box<Routine>] = &mut routines[idx..idx+1];
+		let routine:&mut [Routine] = &mut routines[idx..idx+1];
 
 		if let Ok(cell_data) = cell.get_data() {
 			cell_to_routine(&cell_data, routine);
@@ -51,17 +49,18 @@ fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<Box<Ro
 	}
 }
 
-fn cell_to_routine(cell_data: &ModCommand, out_routines: &mut [Box<Routine>]) {
-	let new_routine:Option<Box<Routine>> = match cell_data.note {
+fn cell_to_routine(cell_data: &ModCommand, out_routines: &mut [Routine]) {
+	let new_routine = match cell_data.note {
 		Note::Note(semitone_idx) => {
 			let note = ::music::Note::new(semitone_idx as i16);
-			Some(Box::new(::routines::FlatNote::new(note)))
+			Some(Routine::FlatNote{note})
 		},
-		Note::Special(SpecialNote::KeyOff) | Note::Special(SpecialNote::NoteCut) | Note::Special(SpecialNote::Fade) => Some(Box::new(StopNote::new())),
+		Note::Special(SpecialNote::KeyOff) | Note::Special(SpecialNote::NoteCut) | Note::Special(SpecialNote::Fade) => Some(Routine::StopNote),
 		_ => None,
 	};
 
-	if let Some(routine_box) = new_routine {
-		out_routines[0] = routine_box;
+	if new_routine.is_some() {
+		let new_routine = new_routine.unwrap();
+		out_routines[0] = new_routine;
 	}
 }
