@@ -8,9 +8,12 @@ static MIDDLE_C_IDX:i16 = 61;
 
 const PERIOD_1HZ:u32 = 1_000_000; // 1 million microseconds
 
+pub const NO_INSTRUMENT:Instrument = Instrument::NoInstrument;
+
 #[derive(Copy,Clone)]
 pub enum Instrument {
 	PulseWave (u32, u32),
+	NoInstrument,
 }
 
 #[derive(Copy,Clone)]
@@ -39,6 +42,7 @@ impl Instrument {
 				let freq = note.get_frequency();
 				pulsewave_get_periods_for_freq(freq, duty_on, duty_off)
 			},
+			NoInstrument => (0, 0),
 		}
 	}
 
@@ -54,6 +58,7 @@ impl Instrument {
 				let duration_cycles = (duration_secs*freq) as u16;
 				(hi_period, lo_period, duration_cycles)
 			},
+			NoInstrument => (0, 0, 0)
 		}
 	}
 }

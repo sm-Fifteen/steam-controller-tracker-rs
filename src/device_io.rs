@@ -92,9 +92,7 @@ impl<'a> DeviceManager<'a> {
 	}
 
 	pub fn play_raw(&mut self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<usize, Error> {
-		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
-			println!("Device detected");
-			
+		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {			
 			let packet = SCFeedbackPacket {
 				haptic_channel,
 				hi_period,

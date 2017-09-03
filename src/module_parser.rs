@@ -2,8 +2,9 @@ use super::AppConfig;
 use openmpt::module::iteration::{Pattern, Row, Cell};
 use openmpt::mod_command::*;
 
-use music::Instrument;
+use music::{Instrument, NO_INSTRUMENT};
 use routines::Routine;
+use playback_timer::Timer;
 
 struct RowParsingConfig<'a> {
 	num_channels: i32,
@@ -11,7 +12,7 @@ struct RowParsingConfig<'a> {
 	instruments: &'a [Instrument],
 }
 
-pub fn parse_module(config: &mut AppConfig) {
+pub fn parse_module(config: &mut AppConfig, timer: &mut Timer) {
 	let mut next_pattern_order = 0;
 	let mut next_row_num = 0;
 
@@ -21,11 +22,12 @@ pub fn parse_module(config: &mut AppConfig) {
 		channel_filter: &config.channel_filter,
 	};
 
-	let mut routines:Vec<(Routine, Instrument)> = vec![(Routine::StopNote, row_config.instruments[0]); config.num_channels as usize];
+	let mut routines:Vec<(Routine, Instrument)> = vec![(Routine::StopNote, NO_INSTRUMENT); config.num_channels as usize];
 
 	while let Some(mut pattern) = config.module.get_pattern_by_order(next_pattern_order) {
 		while let Some(mut row) = pattern.get_row_by_number(next_row_num) {
 			parse_row(&mut row, &row_config, &mut routines);
+			timer.play_routines(&routines);
 
 			next_row_num += 1;
 		}
@@ -51,15 +53,13 @@ fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_r
 	let new_routine = match cell_data.note {
 		Note::Note(semitone_idx) => {
 			let note = ::music::Note::new(semitone_idx as i16);
-			Some(Routine::FlatNote{note})
+			Some((Routine::FlatNote{note}, instruments[cell_data.instr as usize -1]))
 		},
-		Note::Special(SpecialNote::KeyOff) | Note::Special(SpecialNote::NoteCut) | Note::Special(SpecialNote::Fade) => Some(Routine::StopNote),
+		Note::Special(SpecialNote::KeyOff) | Note::Special(SpecialNote::NoteCut) | Note::Special(SpecialNote::Fade) => Some((Routine::StopNote, NO_INSTRUMENT)),
 		_ => None,
 	};
 
-	if new_routine.is_some() {
-		let instrument = instruments[cell_data.instr as usize];
-		let new_routine = new_routine.unwrap();
-		out_routines[0] = (new_routine, instrument);
+	if let Some(new_routine) = new_routine {
+		out_routines[0] = new_routine;
 	}
 }

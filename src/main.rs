@@ -13,7 +13,7 @@ mod device_io;
 mod music;
 mod module_parser;
 mod routines;
-//mod playback_timer;
+mod playback_timer;
 
 fn main() {
 	let matches = App::new("Steam Controller Tracker")
@@ -35,7 +35,15 @@ fn main() {
 }
 
 fn run(config: &mut AppConfig) {
-	module_parser::parse_module(config);
+	let mut libusb_context = Context::new().unwrap();
+	let device_manager = device_io::DeviceManager::new(&mut libusb_context);
+	let mut timer = playback_timer::Timer::new(
+		device_manager,
+		config.module.get_current_tempo(),
+		config.module.get_current_speed(),
+	);
+
+	module_parser::parse_module(config, &mut timer);
 }
 
 #[cfg(test)]
