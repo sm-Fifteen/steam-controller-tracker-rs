@@ -80,9 +80,8 @@ impl<'a> DeviceManager<'a> {
 		}
 	}
 
-	pub fn play_note<I:Instrument>(&mut self, channel: u32, note: &Note, instr: &I, max_duration: Duration) -> Result<usize, Error> {
-		let (hi_period, lo_period) = instr.get_periods_for_note(note);
-		let cycle_count = instr.get_cycles_for_duration(note, max_duration);
+	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Duration) -> Result<usize, Error> {
+		let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, max_duration);
 
 		self.play_raw(channel, hi_period, lo_period, cycle_count)
 	}

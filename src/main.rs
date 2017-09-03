@@ -14,6 +14,7 @@ mod device_io;
 mod music;
 mod module_parser;
 mod routines;
+//mod playback_timer;
 
 fn main() {
 	let matches = App::new("Steam Controller Tracker")
@@ -72,7 +73,7 @@ mod tests {
 		let mut dm = DeviceManager::new(&mut libusb_context);
 
 		let mut note = music::Note::new(96);
-		let mut instr = music::PulseWave::new(1, 1);
+		let mut instr = music::Instrument::PulseWave(1, 1);
 
 		let ret_value = dm.play_note(1, &note, &instr, ::std::time::Duration::from_millis(200));
 
