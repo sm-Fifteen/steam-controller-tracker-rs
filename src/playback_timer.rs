@@ -39,11 +39,14 @@ impl<'a> Timer<'a> {
 			let tick_result = routine.tick_value(0);
 			let channel_idx = channel_idx as u32;
 			
-			// FIXME : Use a match, but Nothing must return a result
-			if let RoutineResult::Play(note) = tick_result {
-				self.device_manager.play_note(channel_idx, &note, &instrument, None);
-			} else if let RoutineResult::Stop = tick_result {
-				self.device_manager.play_raw(channel_idx, 0, 0, 0);
+			let usb_error = match tick_result {
+				RoutineResult::Play(note) => self.device_manager.play_note(channel_idx, &note, &instrument, None).err(),
+				RoutineResult::Stop => self.device_manager.play_raw(channel_idx, 0, 0, 0).err(),
+				RoutineResult::Nothing => None
+			};
+
+			if let Some(error) = usb_error {
+				println!("Error from libusb : {}", error.strerror());
 			}
 		}
 
