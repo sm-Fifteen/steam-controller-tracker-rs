@@ -10,6 +10,18 @@ const PERIOD_1HZ:u32 = 1_000_000; // 1 million microseconds
 
 pub const NO_INSTRUMENT:Instrument = Instrument::NoInstrument;
 
+pub enum ChannelInstruction {
+	/// Plays for an indefinite amount of time,
+	/// until replaced by another
+	Long(Note),
+	/// Plays for the duration of one tick only.
+	/// Counts as Long on the last tick of a row.
+	Short(Note),
+	/// Immediately stop playing
+	Stop,
+	// Once? Drums could need that
+}
+
 #[derive(Copy,Clone)]
 pub enum Instrument {
 	PulseWave (u32, u32),

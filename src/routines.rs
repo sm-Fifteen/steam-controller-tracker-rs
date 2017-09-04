@@ -1,4 +1,5 @@
-use music::Note;
+use music::{Note, ChannelInstruction};
+use music::ChannelInstruction::*;
 
 #[derive(Copy,Clone)]
 pub enum Routine {
@@ -6,20 +7,13 @@ pub enum Routine {
 	FlatNote{note: Note},
 }
 
-pub enum RoutineResult {
-	Play(Note),
-	Stop,
-	Nothing,
-}
-
 impl Routine {
-	pub fn tick_value(self, tick: i32) -> RoutineResult {
-		use self::RoutineResult::*;
+	pub fn tick_value(self, tick: i32) -> Option<ChannelInstruction> {
 		use self::Routine::*;
 
 		match self {
-			StopNote => if tick == 0 { Stop } else { Nothing },
-			FlatNote {note} => if tick == 0 { Play(note) } else { Nothing },
+			StopNote => if tick == 0 { Some(Stop) } else { None },
+			FlatNote {note} => if tick == 0 { Some(Long(note)) } else { None },
 		}
 	}
 }
