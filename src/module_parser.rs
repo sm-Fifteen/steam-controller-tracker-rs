@@ -65,15 +65,20 @@ fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_r
 	};
 
 	if new_routine.is_none() {
-		// TODO : Placeholder, change this block to use effects instead
-		new_routine = match cell_data.note {
-			Note::Note(semitone_idx) => {
-				let note = ::music::Note::new(semitone_idx as i16);
-				Some(Routine::FlatNote{note})
-			},
+		let new_note = match cell_data.note {
+			Note::Note(semitone_idx) => Some(::music::Note::new(semitone_idx as i16)),
+			_ => None,
+		};
+
+		new_routine = match cell_data.command {
+			// TODO: Fill with effects
 			_ => {
-				None
-			}
+				if let Some(note) = new_note {
+					Some(Routine::FlatNote{note})
+				} else {
+					None
+				}
+			},
 		};
 	}
 
