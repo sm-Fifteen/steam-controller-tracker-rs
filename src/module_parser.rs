@@ -2,7 +2,7 @@ use super::AppConfig;
 use openmpt::module::iteration::{Pattern, Row, Cell};
 use openmpt::mod_command::*;
 
-use music::{Instrument, NO_INSTRUMENT};
+use music::{Instrument, ChannelInstruction, NO_INSTRUMENT};
 use routines::Routine;
 use playback_timer::Timer;
 
@@ -23,11 +23,12 @@ pub fn parse_module(config: &mut AppConfig, timer: &mut Timer) {
 	};
 
 	let mut routines:Vec<(Routine, Instrument)> = vec![(Routine::StopNote, NO_INSTRUMENT); config.num_channels as usize];
+	let mut chan_state:Vec<ChannelInstruction> = vec![ChannelInstruction::Stop; config.num_channels as usize];
 
 	while let Some(mut pattern) = config.module.get_pattern_by_order(next_pattern_order) {
 		while let Some(mut row) = pattern.get_row_by_number(next_row_num) {
-			parse_row(&mut row, &row_config, &mut routines);
-			timer.play_routines(&routines);
+			parse_row(&mut row, &row_config, &mut routines, &mut chan_state);
+			timer.play_routines(&routines, &mut chan_state);
 
 			next_row_num += 1;
 		}
@@ -36,20 +37,21 @@ pub fn parse_module(config: &mut AppConfig, timer: &mut Timer) {
 	}
 }
 
-fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<(Routine, Instrument)>) {
+fn parse_row(row: &mut Row, config: &RowParsingConfig, routines: &mut Vec<(Routine, Instrument)>, chan_state: &mut Vec<ChannelInstruction>) {
 	// TODO : Check global effects (set speed/tempo, break pattern, goto order)
 	// FIXME : Not ideal to play same channel multiple times
 	for (idx, channel_num) in config.channel_filter.iter().enumerate() {
-		let mut cell = row.get_cell_by_channel(*channel_num).expect(&format!("Not cell at channel {}", *channel_num));
+		let mut cell = row.get_cell_by_channel(*channel_num).expect(&format!("No cell at channel {}", *channel_num));
+		let mut state = &mut chan_state[idx..idx+1];
 		let routine:&mut [(Routine, Instrument)] = &mut routines[idx..idx+1];
 
 		if let Ok(cell_data) = cell.get_data() {
-			cell_to_routine(&cell_data, config.instruments, routine);
+			cell_to_routine(&cell_data, config.instruments, routine, state);
 		}
 	}
 }
 
-fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_routines: &mut [(Routine, Instrument)]) {
+fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_routines: &mut [(Routine, Instrument)], state: &mut [ChannelInstruction]) {
 	let instr = match cell_data.instr {
 		0 => NO_INSTRUMENT,
 		// Instrument indexing starts at 1
@@ -74,7 +76,8 @@ fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_r
 			// TODO: Fill with effects
 			_ => {
 				if let Some(note) = new_note {
-					Some(Routine::FlatNote{note})
+					state[0] = ChannelInstruction::Long(note);
+					Some(Routine::FlatNote)
 				} else {
 					None
 				}

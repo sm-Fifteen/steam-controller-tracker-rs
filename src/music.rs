@@ -10,6 +10,7 @@ const PERIOD_1HZ:u32 = 1_000_000; // 1 million microseconds
 
 pub const NO_INSTRUMENT:Instrument = Instrument::NoInstrument;
 
+#[derive(Copy,Clone)]
 pub enum ChannelInstruction {
 	/// Plays for an indefinite amount of time,
 	/// until replaced by another

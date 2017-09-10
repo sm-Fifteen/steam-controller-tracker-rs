@@ -27,7 +27,7 @@ impl<'a> Timer<'a> {
 		returned_timer
 	}
 
-	pub fn play_routines(&mut self, routines: &Vec<(Routine, Instrument)>) {
+	pub fn play_routines(&mut self, routines: &Vec<(Routine, Instrument)>, chan_state: &mut Vec<ChannelInstruction>) {
 		let row_duration = Duration::from_millis((60000f32/(self.lines_par_beat * self.beats_per_minute as f32)) as u64);
 
 		let timer_thread = thread::spawn(move || {
@@ -36,7 +36,8 @@ impl<'a> Timer<'a> {
 
 		// Only play first tick until I figure out threaded I/O
 		for (channel_idx, &(routine, instrument)) in routines.iter().enumerate() {
-			let tick_result = routine.tick_value(0);
+			let mut state = chan_state.get_mut(channel_idx).expect(&format!("Channel {} has no set state", channel_idx));
+			let tick_result = routine.tick_value(0, state);
 			let channel_idx = channel_idx as u32;
 			
 			let usb_error = if let Some(instruction) = tick_result {

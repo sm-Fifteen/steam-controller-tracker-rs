@@ -4,16 +4,17 @@ use music::ChannelInstruction::*;
 #[derive(Copy,Clone)]
 pub enum Routine {
 	StopNote,
-	FlatNote{note: Note},
+	FlatNote,
 }
 
 impl Routine {
-	pub fn tick_value(self, tick: i32) -> Option<ChannelInstruction> {
+	// Returns some if a sound is to be played, may mutate the state either way.
+	pub fn tick_value(self, tick: i32, state: &mut ChannelInstruction) -> Option<ChannelInstruction> {
 		use self::Routine::*;
 
 		match self {
 			StopNote => if tick == 0 { Some(Stop) } else { None },
-			FlatNote {note} => if tick == 0 { Some(Long(note)) } else { None },
+			FlatNote => if tick == 0 { Some(*state) } else { None },
 		}
 	}
 }
