@@ -74,6 +74,13 @@ fn cell_to_routine<'a>(cell_data: &ModCommand, instruments: &[Instrument], out_r
 
 		new_routine = match cell_data.command {
 			// TODO: Fill with effects
+			EffectCommand::Arpeggio(x, y) => {
+				if let Some(note) = new_note {
+					state[0] = ChannelInstruction::Long(note);
+				}
+				
+				Some(Routine::Arpeggio{ x, y })
+			},
 			_ => {
 				if let Some(note) = new_note {
 					state[0] = ChannelInstruction::Long(note);

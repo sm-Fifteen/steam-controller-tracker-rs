@@ -35,6 +35,15 @@ pub struct Note {
 	// sub-semitone stuff
 }
 
+// TODO : Add with tuple for sub-semitone variations
+impl ::std::ops::Add<u8> for Note {
+    type Output = Note;
+
+    fn add(self, semitones: u8) -> Note {
+        Note { semitone_idx: self.semitone_idx + semitones as i16 }
+    }
+}
+
 impl Note {
 	pub fn new(semitone_idx: i16) -> Note {
 		Note { semitone_idx }

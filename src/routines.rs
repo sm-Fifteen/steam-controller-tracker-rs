@@ -5,6 +5,7 @@ use music::ChannelInstruction::*;
 pub enum Routine {
 	StopNote,
 	FlatNote,
+	Arpeggio {x: u8, y: u8},
 }
 
 impl Routine {
@@ -15,6 +16,20 @@ impl Routine {
 		match self {
 			StopNote => if tick == 0 { Some(Stop) } else { None },
 			FlatNote => if tick == 0 { Some(*state) } else { None },
+			Arpeggio{ x, y } => match *state {
+				// DOES NOT mutate the state
+				Short(note) | Long(note) => {
+					let new_note = Short(match tick%2 {
+						0 => note,
+						1 => note + x,
+						2 => note + y,
+						_ => unreachable!(),
+					});
+
+					Some(new_note)
+				},
+				_ => None,
+			}
 		}
 	}
 }
