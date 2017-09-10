@@ -3,6 +3,7 @@ extern crate libusb_sys;
 extern crate clap;
 extern crate openmpt;
 extern crate byteorder;
+extern crate crossbeam;
 
 use clap::{App, Arg};
 use libusb::Context;
