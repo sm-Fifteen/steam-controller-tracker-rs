@@ -36,8 +36,8 @@ impl<'a> Timer<'a> {
 
 		// Only play first tick until I figure out threaded I/O
 		for (channel_idx, &(routine, instrument)) in routines.iter().enumerate() {
-			let mut state = chan_state.get_mut(channel_idx).expect(&format!("Channel {} has no set state", channel_idx));
-			let tick_result = routine.tick_value(0, state);
+			let mut state = &mut chan_state[channel_idx..channel_idx+1];
+			let tick_result = routine.tick_value(0, &mut state[0]);
 			let channel_idx = channel_idx as u32;
 			
 			let usb_error = if let Some(instruction) = tick_result {
@@ -46,6 +46,10 @@ impl<'a> Timer<'a> {
 					ChannelInstruction::Long(note) => self.device_manager.play_note(channel_idx, &note, &instrument, None).err(),
 					ChannelInstruction::Short(note) => self.device_manager.play_note(channel_idx, &note, &instrument, Some(row_duration)).err(),
 				}
+			} else if let &ChannelInstruction::Short(note) = &state[0] {
+				// If a short note is not renewed, it's replaced by a long note of the channel state
+				state[0] = ChannelInstruction::Long(note);
+				self.device_manager.play_note(channel_idx, &note, &instrument, None).err()
 			} else {
 				None
 			};
