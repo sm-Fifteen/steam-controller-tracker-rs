@@ -1,5 +1,6 @@
 use std::thread;
 use std::time::Duration;
+use std::sync::Mutex;
 use routines::Routine;
 use music::{Instrument, ChannelInstruction};
 use device_io::DeviceManager;
@@ -7,14 +8,14 @@ use device_io::DeviceManager;
 /// Lock-step timer responsible for playing routines at the right tickrate
 /// and controlling device IO
 pub struct Timer<'a> {
-	device_manager: DeviceManager<'a>,
+	device_manager: Mutex<DeviceManager<'a>>,
 	beats_per_minute: i32,
 	lines_par_beat: f32,
 	ticks_per_line: i32,
 }
 
 impl<'a> Timer<'a> {
-	pub fn new(device_manager: DeviceManager, initial_tempo: i32, initial_speed: i32) -> Timer {
+	pub fn new(device_manager: Mutex<DeviceManager>, initial_tempo: i32, initial_speed: i32) -> Timer {
 		let mut returned_timer = Timer {
 			device_manager,
 			beats_per_minute: 0,
@@ -29,6 +30,7 @@ impl<'a> Timer<'a> {
 
 	pub fn play_routines(&mut self, routines: &Vec<(Routine, Instrument)>, chan_state: &mut Vec<ChannelInstruction>) {
 		let row_duration = Duration::from_millis((60000f32/(self.lines_par_beat * self.beats_per_minute as f32)) as u64);
+		let device_manager = self.device_manager.get_mut().unwrap();
 
 		let timer_thread = thread::spawn(move || {
 			thread::sleep(row_duration);
@@ -42,14 +44,14 @@ impl<'a> Timer<'a> {
 			
 			let usb_error = if let Some(instruction) = tick_result {
 				match instruction {
-					ChannelInstruction::Stop => self.device_manager.play_raw(channel_idx, 0, 0, 0).err(),
-					ChannelInstruction::Long(note) => self.device_manager.play_note(channel_idx, &note, &instrument, None).err(),
-					ChannelInstruction::Short(note) => self.device_manager.play_note(channel_idx, &note, &instrument, Some(row_duration)).err(),
+					ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0).err(),
+					ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None).err(),
+					ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(row_duration)).err(),
 				}
 			} else if let &ChannelInstruction::Short(note) = &state[0] {
 				// If a short note is not renewed, it's replaced by a long note of the channel state
 				state[0] = ChannelInstruction::Long(note);
-				self.device_manager.play_note(channel_idx, &note, &instrument, None).err()
+				device_manager.play_note(channel_idx, &note, &instrument, None).err()
 			} else {
 				None
 			};

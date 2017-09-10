@@ -8,6 +8,7 @@ use libusb::Context;
 use libusb::Error;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::time::Duration;
+use std::sync::Mutex;
 use music::{Note, Instrument};
 
 pub struct DeviceManager<'a> {
@@ -41,7 +42,7 @@ impl SCFeedbackPacket {
 }
 
 impl<'a> DeviceManager<'a> {
-	pub fn new(libusb_context: &'a mut Context) -> DeviceManager<'a> {
+	pub fn new(libusb_context: &'a mut Context) -> Mutex<DeviceManager<'a>> {
 		let mut iter_list = libusb_context.devices().unwrap();
 		let mut iter = iter_list.iter();
 		let mut devices = Vec::<Device<'a>>::new();
@@ -66,11 +67,11 @@ impl<'a> DeviceManager<'a> {
 			
 		}
 
-		DeviceManager {
+		Mutex::new(DeviceManager {
 			libusb_context,
 			devices,
 			handles,
-		}
+		})
 	}
 
 	fn get_device_channel(&mut self, channel_num: u32) -> Option<(&mut DeviceHandle<'a>, u8)> {

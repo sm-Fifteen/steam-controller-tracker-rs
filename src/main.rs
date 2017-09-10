@@ -55,7 +55,8 @@ mod tests {
 	#[test]
 	fn test_beep() {
 		let mut libusb_context = libusb::Context::new().unwrap();
-		let mut dm = DeviceManager::new(&mut libusb_context);
+		let mut dm_mutex = DeviceManager::new(&mut libusb_context);
+		let mut dm = dm_mutex.lock().unwrap();
 
 		let mut note = music::Note::new(96);
 		let mut instr = music::Instrument::PulseWave(1, 1);
