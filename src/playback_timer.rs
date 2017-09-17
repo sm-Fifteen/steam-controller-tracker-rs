@@ -34,7 +34,7 @@ impl<'a> Timer<'a> {
 		let mut state_chunks = chan_state.chunks_mut(1);
 		let mut channel_threads = Vec::<ScopedJoinHandle<Option<::libusb::Error>>>::new();
 
-		let timer_thread = thread::spawn(move || {
+		let row_timer_thread = thread::spawn(move || {
 			thread::sleep(row_duration);
 		});
 
@@ -43,25 +43,49 @@ impl<'a> Timer<'a> {
 				let device_manager = self.device_manager.clone();
 				let mut state = state_chunks.next().expect("State and device lists do not match");
 				
-				channel_threads.push(scope.spawn(move || {
-					let tick_result = routine.tick_value(0, &mut state[0]);
-					let channel_idx = channel_idx as u32;
-					
-					let mut device_manager = device_manager.lock().unwrap();
+				let speed = match routine.get_speed() {
+					Some(speed) => speed,
+					None => self.ticks_per_line as u32,
+				};
 
-					if let Some(instruction) = tick_result {
-						match instruction {
-							ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0).err(),
-							ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None).err(),
-							ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(row_duration)).err(),
+				channel_threads.push(scope.spawn(move || {
+					let mut return_value = None::<::libusb::Error>;
+					let tick_duration = row_duration/speed;
+					
+					for tick in 0..speed {
+						let tick_timer_thread = thread::spawn(move || {
+							thread::sleep(tick_duration);
+						});
+
+						let tick_result = routine.tick_value(tick as i32, &mut state[0]);
+						let channel_idx = channel_idx as u32;
+						
+						return_value = if let Some(instruction) = tick_result {
+							let mut device_manager = device_manager.lock().unwrap();
+
+							match instruction {
+								ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0).err(),
+								ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None).err(),
+								ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(tick_duration)).err(),
+							}
+						} else if let &ChannelInstruction::Short(note) = &state[0] {
+							let mut device_manager = device_manager.lock().unwrap();
+
+							// If a short note is not renewed, it's replaced by a long note of the channel state
+							state[0] = ChannelInstruction::Long(note);
+							device_manager.play_note(channel_idx, &note, &instrument, None).err()
+						} else {
+							None
+						};
+
+						if return_value.is_some() {
+							break;
 						}
-					} else if let &ChannelInstruction::Short(note) = &state[0] {
-						// If a short note is not renewed, it's replaced by a long note of the channel state
-						state[0] = ChannelInstruction::Long(note);
-						device_manager.play_note(channel_idx, &note, &instrument, None).err()
-					} else {
-						None
+
+						tick_timer_thread.join();
 					}
+
+					return_value
 				}));
 			}
 		});
@@ -73,7 +97,7 @@ impl<'a> Timer<'a> {
 			}
 		}
 
-		timer_thread.join();
+		row_timer_thread.join();
 	}
 
 	pub fn set_speed(&mut self, speed: i32) {

@@ -19,17 +19,22 @@ impl Routine {
 			Arpeggio{ x, y } => match *state {
 				// DOES NOT mutate the state
 				Short(note) | Long(note) => {
-					let new_note = Short(match tick%2 {
+					let new_note = Short(match tick%3 {
 						0 => note,
 						1 => note + x,
 						2 => note + y,
 						_ => unreachable!(),
 					});
-
 					Some(new_note)
 				},
 				_ => None,
 			}
 		}
+	}
+
+	// Returns none if the routine follows the global speed, Some if it has its own setting
+	pub fn get_speed(&self) -> Option<u32> {
+		// TODO : Implement for routines like vibrato
+		None
 	}
 }
