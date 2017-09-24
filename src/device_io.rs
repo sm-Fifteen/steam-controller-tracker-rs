@@ -41,6 +41,15 @@ impl SCFeedbackPacket {
 	} 
 }
 
+pub struct USBControlTransfer {
+	request_type: u8,
+	request: u8,
+	value: u16,
+	index: u16,
+	buf: Vec<u8>,
+	timeout: Duration,
+}
+
 impl<'a> DeviceManager<'a> {
 	pub fn new(libusb_context: &'a mut Context) -> Mutex<DeviceManager<'a>> {
 		let mut iter_list = libusb_context.devices().unwrap();
@@ -82,39 +91,57 @@ impl<'a> DeviceManager<'a> {
 		}
 	}
 
-	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<usize, Error> {
-		if let Some(duration) = max_duration {
-			let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, duration);
-			self.play_raw(channel, hi_period, lo_period, cycle_count)
+	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<usize, Error> {		
+		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
+			Self::send_control(device, USBControlTransfer::from_note(haptic_channel, note, instr, max_duration))
 		} else {
-			let (hi_period, lo_period) = instr.get_periods_for_note(note);
-			self.play_raw(channel, hi_period, lo_period, REPEAT_FOREVER)
-		}
+			Err(Error::NoDevice)
+		}		
 	}
 
 	pub fn play_raw(&mut self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<usize, Error> {
-		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {			
-			let packet = SCFeedbackPacket {
-				haptic_channel,
-				hi_period,
-				lo_period,
-				cycle_count,
-				priority: NOTE_PRIORITY,
-			};
-
-			let timeout = Duration::from_secs(1);
-			let req_type = ::libusb::request_type(Direction::Out, RequestType::Class, Recipient::Interface);
-
-			device.write_control(
-				req_type,
-				::libusb_sys::LIBUSB_REQUEST_SET_CONFIGURATION,
-				0x0300, // Still can't remember what this one was for
-				2, // Interface number, IIRC
-				packet.serialize().as_slice(),
-				timeout
-			)
+		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
+			Self::send_control(device, USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count))
 		} else {
 			Err(Error::NoDevice)
+		}	
+	}
+	
+	fn send_control(device: &mut DeviceHandle, control: USBControlTransfer) -> Result<usize, ::libusb::Error> {
+		device.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
+	}
+}
+
+impl USBControlTransfer {
+	pub fn from_note(haptic_channel: u8, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> USBControlTransfer {
+		if let Some(duration) = max_duration {
+			let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, duration);
+			USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count)
+		} else {
+			let (hi_period, lo_period) = instr.get_periods_for_note(note);
+			USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, REPEAT_FOREVER)
+		}
+	}
+
+	pub fn from_raw(haptic_channel: u8, hi_period: u16, lo_period: u16, cycle_count: u16) -> USBControlTransfer {
+		let packet = SCFeedbackPacket {
+			haptic_channel,
+			hi_period,
+			lo_period,
+			cycle_count,
+			priority: NOTE_PRIORITY,
+		};
+
+		let timeout = Duration::from_secs(1);
+		let request_type = ::libusb::request_type(Direction::Out, RequestType::Class, Recipient::Interface);
+
+		USBControlTransfer{
+			request_type,
+			request: ::libusb_sys::LIBUSB_REQUEST_SET_CONFIGURATION,
+			value: 0x0300, // Still can't remember what this one was for
+			index: 2, // Interface number, IIRC
+			buf: packet.serialize(),
+			timeout
 		}
 	}
 }
