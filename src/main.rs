@@ -37,14 +37,19 @@ fn main() {
 
 fn run(config: &mut AppConfig) {
 	let mut libusb_context = Context::new().unwrap();
-	let device_manager = device_io::DeviceManager::new(&mut libusb_context);
-	let mut timer = playback_timer::Timer::new(
-		device_manager,
-		config.module.get_current_tempo(),
-		config.module.get_current_speed(),
-	);
 
-	module_parser::parse_module(config, &mut timer);
+	// *Almost* static thread lifetime, but must not outlive libusb
+	::crossbeam::scope(|scope| {
+		let device_manager = device_io::DeviceManager::new(&scope, &mut libusb_context);
+
+		let mut timer = playback_timer::Timer::new(
+			device_manager,
+			config.module.get_current_tempo(),
+			config.module.get_current_speed(),
+		);
+
+		module_parser::parse_module(config, &mut timer);
+	})
 }
 
 #[cfg(test)]
@@ -55,15 +60,18 @@ mod tests {
 
 	#[test]
 	fn test_beep() {
-		let mut libusb_context = libusb::Context::new().unwrap();
-		let mut dm_mutex = DeviceManager::new(&mut libusb_context);
-		let mut dm = dm_mutex.lock().unwrap();
+		let mut libusb_context = ::libusb::Context::new().unwrap();
 
-		let mut note = music::Note::new(96);
-		let mut instr = music::Instrument::PulseWave(1, 1);
+		::crossbeam::scope(|scope| {
+			let mut dm_mutex = DeviceManager::new(&scope, &mut libusb_context);
+			let mut dm = dm_mutex.lock().unwrap();
 
-		let ret_value = dm.play_note(1, &note, &instr, Some(::std::time::Duration::from_millis(200)));
+			let mut note = music::Note::new(96);
+			let mut instr = music::Instrument::PulseWave(1, 1);
 
-		ret_value.expect("Failed to send to device");
+			let ret_value = dm.play_note(1, &note, &instr, Some(::std::time::Duration::from_millis(200)));
+
+			ret_value.expect("Failed to send to device");
+		});
 	}
 }

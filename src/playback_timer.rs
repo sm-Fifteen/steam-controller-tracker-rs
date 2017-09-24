@@ -32,7 +32,6 @@ impl<'a> Timer<'a> {
 	pub fn play_routines(&mut self, routines: &Vec<(Routine, Instrument)>, chan_state: &mut Vec<ChannelInstruction>) {
 		let row_duration = Duration::from_millis((60000f32/(self.lines_par_beat * self.beats_per_minute as f32)) as u64);
 		let mut state_chunks = chan_state.chunks_mut(1);
-		let mut channel_threads = Vec::<ScopedJoinHandle<Option<::libusb::Error>>>::new();
 
 		let row_timer_thread = thread::spawn(move || {
 			thread::sleep(row_duration);
@@ -48,8 +47,7 @@ impl<'a> Timer<'a> {
 					None => self.ticks_per_line as u32,
 				};
 
-				channel_threads.push(scope.spawn(move || {
-					let mut return_value = None::<::libusb::Error>;
+				scope.spawn(move || {
 					let tick_duration = row_duration/speed;
 					
 					for tick in 0..speed {
@@ -60,42 +58,27 @@ impl<'a> Timer<'a> {
 						let tick_result = routine.tick_value(tick as i32, &mut state[0]);
 						let channel_idx = channel_idx as u32;
 						
-						return_value = if let Some(instruction) = tick_result {
+						if let Some(instruction) = tick_result {
 							let mut device_manager = device_manager.lock().unwrap();
 
 							match instruction {
-								ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0).err(),
-								ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None).err(),
-								ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(tick_duration)).err(),
-							}
+								ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0),
+								ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None),
+								ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(tick_duration)),
+							};
 						} else if let &ChannelInstruction::Short(note) = &state[0] {
 							let mut device_manager = device_manager.lock().unwrap();
 
 							// If a short note is not renewed, it's replaced by a long note of the channel state
 							state[0] = ChannelInstruction::Long(note);
-							device_manager.play_note(channel_idx, &note, &instrument, None).err()
-						} else {
-							None
-						};
-
-						if return_value.is_some() {
-							break;
+							device_manager.play_note(channel_idx, &note, &instrument, None);
 						}
 
 						tick_timer_thread.join();
 					}
-
-					return_value
-				}));
+				});
 			}
 		});
-
-
-		for thread in channel_threads {
-			if let Some(error) = thread.join() {
-				println!("Error from libusb : {}", error.strerror());
-			}
-		}
 
 		row_timer_thread.join();
 	}

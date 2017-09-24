@@ -5,16 +5,16 @@ const REPEAT_FOREVER:u16 = 0x7FFF;
 
 use libusb::{Direction,RequestType,Recipient, Device, DeviceHandle};
 use libusb::Context;
-use libusb::Error;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::time::Duration;
-use std::sync::Mutex;
+use crossbeam::Scope;
+use std::sync::{mpsc, Mutex};
 use music::{Note, Instrument};
 
 pub struct DeviceManager<'a> {
 	libusb_context: &'a Context,
 	devices: Vec<Device<'a>>,
-	handles: Vec<DeviceHandle<'a>>,
+	usb_tx: Vec<mpsc::SyncSender<USBControlTransfer>>,
 }
 
 struct SCFeedbackPacket {
@@ -51,11 +51,11 @@ pub struct USBControlTransfer {
 }
 
 impl<'a> DeviceManager<'a> {
-	pub fn new(libusb_context: &'a mut Context) -> Mutex<DeviceManager<'a>> {
+	pub fn new(libusb_scope: &Scope<'a>, libusb_context: &'a mut Context) -> Mutex<DeviceManager<'a>> {
 		let mut iter_list = libusb_context.devices().unwrap();
 		let mut iter = iter_list.iter();
 		let mut devices = Vec::<Device<'a>>::new();
-		let mut handles = Vec::<DeviceHandle<'a>>::new();
+		let mut usb_tx = Vec::<mpsc::SyncSender<USBControlTransfer>>::new();
 
 		let matches = iter.filter(|device| {
 			match device.device_descriptor() {
@@ -70,43 +70,57 @@ impl<'a> DeviceManager<'a> {
 		for device in matches {
 			if let Ok(mut handle) = device.open() {
 				handle.detach_kernel_driver(2);
-				devices.push(device);
-				handles.push(handle);
+				let (tx, rx) = mpsc::sync_channel(0);
+
+				libusb_scope.spawn(move || {
+					let handle_ref = &mut handle;
+
+					while let Ok(control) = rx.recv() {
+						Self::send_control(handle_ref, control);
+					}
+				});
+
+				usb_tx.push(tx);
 			}
-			
 		}
 
 		Mutex::new(DeviceManager {
 			libusb_context,
 			devices,
-			handles,
+			usb_tx,
 		})
 	}
 
-	fn get_device_channel(&mut self, channel_num: u32) -> Option<(&mut DeviceHandle<'a>, u8)> {
-		if let Some(mut handle) = self.handles.get_mut(channel_num as usize >> 1) {
-			Some((handle, (channel_num % 2) as u8))
+	fn get_device_channel(&self, channel_num: u32) -> Option<(mpsc::SyncSender<USBControlTransfer>, u8)> {
+		if let Some(tx) = self.usb_tx.get(channel_num as usize >> 1) {
+			Some((tx.clone(), (channel_num % 2) as u8))
 		} else {
 			None
 		}
 	}
 
-	pub fn play_note(&mut self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<usize, Error> {		
-		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
-			Self::send_control(device, USBControlTransfer::from_note(haptic_channel, note, instr, max_duration))
+	pub fn play_note(&self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<(), ()> {		
+		if let Some((tx, haptic_channel)) = self.get_device_channel(channel) {
+			match tx.send(USBControlTransfer::from_note(haptic_channel, note, instr, max_duration)) {
+				Ok(_) => Ok(()),
+				Err(_) => Err(()), // Device probably disconnected, should be de-listed
+			}
 		} else {
-			Err(Error::NoDevice)
+			Err(()) // No such device
 		}		
 	}
 
-	pub fn play_raw(&mut self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<usize, Error> {
-		if let Some((device, haptic_channel)) = self.get_device_channel(channel) {
-			Self::send_control(device, USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count))
+	pub fn play_raw(&self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<(), ()> {
+		if let Some((tx, haptic_channel)) = self.get_device_channel(channel) {
+			match tx.send(USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count)) {
+				Ok(_) => Ok(()),
+				Err(_) => Err(()), // Device probably disconnected, should be de-listed
+			}
 		} else {
-			Err(Error::NoDevice)
-		}	
+			Err(()) // No such device
+		}
 	}
-	
+
 	fn send_control(device: &mut DeviceHandle, control: USBControlTransfer) -> Result<usize, ::libusb::Error> {
 		device.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
 	}
