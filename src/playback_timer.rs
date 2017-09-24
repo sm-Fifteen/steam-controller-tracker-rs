@@ -1,24 +1,23 @@
 use std::thread;
 use std::time::Duration;
-use std::sync::{Mutex, Arc};
 use routines::Routine;
 use music::{Instrument, ChannelInstruction};
 use device_io::DeviceManager;
-use crossbeam::{scope, ScopedJoinHandle};
+use crossbeam::scope;
 
 /// Lock-step timer responsible for playing routines at the right tickrate
 /// and controlling device IO
 pub struct Timer<'a> {
-	device_manager: Arc<Mutex<DeviceManager<'a>>>,
+	device_manager: DeviceManager<'a>,
 	beats_per_minute: i32,
 	lines_par_beat: f32,
 	ticks_per_line: i32,
 }
 
 impl<'a> Timer<'a> {
-	pub fn new(device_manager: Mutex<DeviceManager>, initial_tempo: i32, initial_speed: i32) -> Timer {
+	pub fn new(device_manager: DeviceManager, initial_tempo: i32, initial_speed: i32) -> Timer {
 		let mut returned_timer = Timer {
-			device_manager: Arc::new(device_manager),
+			device_manager: device_manager,
 			beats_per_minute: 0,
 			lines_par_beat: 0f32,
 			ticks_per_line: 0,
@@ -39,7 +38,7 @@ impl<'a> Timer<'a> {
 
 		scope(|scope| {
 			for (channel_idx, &(routine, instrument)) in routines.iter().enumerate() {
-				let device_manager = self.device_manager.clone();
+				let device_manager = &self.device_manager;
 				let mut state = state_chunks.next().expect("State and device lists do not match");
 				
 				let speed = match routine.get_speed() {
@@ -58,17 +57,16 @@ impl<'a> Timer<'a> {
 						let tick_result = routine.tick_value(tick as i32, &mut state[0]);
 						let channel_idx = channel_idx as u32;
 						
-						if let Some(instruction) = tick_result {
-							let mut device_manager = device_manager.lock().unwrap();
+						// TODO: Make usb tx acquisition happen somewhere around here, so we can react properly to errors.
+						// Also, remove device_manager.play_*, since those won't be needed anymore
 
+						if let Some(instruction) = tick_result {
 							match instruction {
 								ChannelInstruction::Stop => device_manager.play_raw(channel_idx, 0, 0, 0),
 								ChannelInstruction::Long(note) => device_manager.play_note(channel_idx, &note, &instrument, None),
 								ChannelInstruction::Short(note) => device_manager.play_note(channel_idx, &note, &instrument, Some(tick_duration)),
 							};
 						} else if let &ChannelInstruction::Short(note) = &state[0] {
-							let mut device_manager = device_manager.lock().unwrap();
-
 							// If a short note is not renewed, it's replaced by a long note of the channel state
 							state[0] = ChannelInstruction::Long(note);
 							device_manager.play_note(channel_idx, &note, &instrument, None);

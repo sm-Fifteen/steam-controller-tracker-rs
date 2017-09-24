@@ -8,7 +8,7 @@ use libusb::Context;
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::time::Duration;
 use crossbeam::Scope;
-use std::sync::{mpsc, Mutex};
+use std::sync::mpsc;
 use music::{Note, Instrument};
 
 pub struct DeviceManager<'a> {
@@ -51,7 +51,7 @@ pub struct USBControlTransfer {
 }
 
 impl<'a> DeviceManager<'a> {
-	pub fn new(libusb_scope: &Scope<'a>, libusb_context: &'a mut Context) -> Mutex<DeviceManager<'a>> {
+	pub fn new(libusb_scope: &Scope<'a>, libusb_context: &'a mut Context) -> DeviceManager<'a> {
 		let mut iter_list = libusb_context.devices().unwrap();
 		let mut iter = iter_list.iter();
 		let mut devices = Vec::<Device<'a>>::new();
@@ -76,6 +76,7 @@ impl<'a> DeviceManager<'a> {
 					let handle_ref = &mut handle;
 
 					while let Ok(control) = rx.recv() {
+						// TODO: Account for errors
 						Self::send_control(handle_ref, control);
 					}
 				});
@@ -84,11 +85,11 @@ impl<'a> DeviceManager<'a> {
 			}
 		}
 
-		Mutex::new(DeviceManager {
+		DeviceManager {
 			libusb_context,
 			devices,
 			usb_tx,
-		})
+		}
 	}
 
 	fn get_device_channel(&self, channel_num: u32) -> Option<(mpsc::SyncSender<USBControlTransfer>, u8)> {
@@ -107,7 +108,7 @@ impl<'a> DeviceManager<'a> {
 			}
 		} else {
 			Err(()) // No such device
-		}		
+		}
 	}
 
 	pub fn play_raw(&self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<(), ()> {
