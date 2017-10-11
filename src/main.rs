@@ -54,24 +54,36 @@ fn run(config: &mut AppConfig) {
 
 #[cfg(test)]
 mod tests {
+	use ::std::time::Duration;
 	use libusb;
 	use super::{music, device_io};
 	use device_io::DeviceManager;
 
 	#[test]
-	fn test_beep() {
+	fn sound_tests() {
 		let mut libusb_context = ::libusb::Context::new().unwrap();
 
 		::crossbeam::scope(|scope| {
-			let mut dm_mutex = DeviceManager::new(&scope, &mut libusb_context);
-			let mut dm = dm_mutex.lock().unwrap();
+			let mut dm = DeviceManager::new(&scope, &mut libusb_context);
 
-			let mut note = music::Note::new(96);
-			let mut instr = music::Instrument::PulseWave(1, 1);
-
-			let ret_value = dm.play_note(1, &note, &instr, Some(::std::time::Duration::from_millis(200)));
-
-			ret_value.expect("Failed to send to device");
+			test_beep(&dm);
+			::std::thread::sleep(Duration::new(1, 0));
+			test_slow_rumble(&dm);
 		});
+	}
+	
+	fn test_beep(dm: &DeviceManager) {
+		let mut note = music::Note::new(96);
+		let mut instr = music::Instrument::PulseWave(1, 1);
+
+		let ret_value = dm.play_note(1, &note, &instr, Some(Duration::from_millis(200)));
+
+		ret_value.expect("Failed to send to device");
+	}
+
+	fn test_slow_rumble(dm: &DeviceManager) {
+		let ret_value = dm.play_raw(1, 0xFFFF, 0xFFFF, 6);
+
+		ret_value.expect("Failed to send to device");
 	}
 }
