@@ -1,3 +1,6 @@
+mod device;
+mod steam_controller;
+
 /// Touch feedback is 0, priority 1 means notes don't
 /// get interrupted when the user touches the controller
 const NOTE_PRIORITY:u8 = 1;
@@ -39,15 +42,6 @@ impl SCFeedbackPacket {
 		buf.resize(64, 0);
 		buf
 	} 
-}
-
-pub struct USBControlTransfer {
-	request_type: u8,
-	request: u8,
-	value: u16,
-	index: u16,
-	buf: Vec<u8>,
-	timeout: Duration,
 }
 
 impl<'a> DeviceManager<'a> {

@@ -23,13 +23,13 @@ pub enum ChannelInstruction {
 	// Once? Drums could need that
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub enum Instrument {
 	PulseWave (u32, u32),
 	NoInstrument,
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub struct Note {
 	semitone_idx: i16,
 	// sub-semitone stuff
