@@ -8,95 +8,48 @@ const REPEAT_FOREVER:u16 = 0x7FFF;
 
 use libusb::{Direction,RequestType,Recipient, Device, DeviceHandle};
 use libusb::Context;
-use byteorder::{LittleEndian, WriteBytesExt};
+use self::device::{USBDeviceWrapper, MusicDevice, USBControlTransfer};
+use self::steam_controller::SteamController;
 use std::time::Duration;
 use crossbeam::Scope;
 use std::sync::mpsc;
 use music::{Note, Instrument};
 
+// TODO: Replace with MusicDevices (boxed pointers?)
+type DeviceType<'a> = SteamController<'a>;
+
 pub struct DeviceManager<'a> {
 	libusb_context: &'a Context,
-	devices: Vec<Device<'a>>,
-	usb_tx: Vec<mpsc::SyncSender<USBControlTransfer>>,
-}
-
-struct SCFeedbackPacket {
-	haptic_channel: u8,
-	hi_period: u16,
-	lo_period: u16,
-	cycle_count: u16,
-	priority: u8,
-}
-
-impl SCFeedbackPacket {
-	pub fn serialize(&self) -> Vec<u8> {
-		let mut buf = vec![];
-		buf.write_u8(0x8f); // Feedback data
-		buf.write_u8(0x08); // Length : 8 bytes
-		buf.write_u8(self.haptic_channel);
-		buf.write_u16::<LittleEndian>(self.hi_period);
-		buf.write_u16::<LittleEndian>(self.lo_period);
-		buf.write_u16::<LittleEndian>(self.cycle_count);
-		buf.write_u8(self.priority);
-
-		buf.resize(64, 0);
-		buf
-	} 
+	devices: Vec<DeviceType<'a>>,
 }
 
 impl<'a> DeviceManager<'a> {
 	pub fn new(libusb_scope: &Scope<'a>, libusb_context: &'a mut Context) -> DeviceManager<'a> {
 		let mut iter_list = libusb_context.devices().unwrap();
 		let mut iter = iter_list.iter();
-		let mut devices = Vec::<Device<'a>>::new();
-		let mut usb_tx = Vec::<mpsc::SyncSender<USBControlTransfer>>::new();
 
-		let matches = iter.filter(|device| {
-			match device.device_descriptor() {
-				Err(_) => false,
-				Ok(desc) => {
-					desc.vendor_id() == 0x28de &&
-					desc.product_id() == 0x1102
-				}
-			}
+		let matches = iter.filter_map(|device| {
+			// TODO : Try other devices here
+			SteamController::device_matcher(&libusb_scope, device)
 		});
-
-		for device in matches {
-			if let Ok(mut handle) = device.open() {
-				handle.detach_kernel_driver(2);
-				let (tx, rx) = mpsc::sync_channel(0);
-
-				libusb_scope.spawn(move || {
-					let handle_ref = &mut handle;
-
-					while let Ok(control) = rx.recv() {
-						// TODO: Account for errors
-						Self::send_control(handle_ref, control);
-					}
-				});
-
-				usb_tx.push(tx);
-			}
-		}
 
 		DeviceManager {
 			libusb_context,
-			devices,
-			usb_tx,
+			devices: matches.collect(),
 		}
 	}
 
-	fn get_device_channel(&self, channel_num: u32) -> Option<(mpsc::SyncSender<USBControlTransfer>, u8)> {
-		if let Some(tx) = self.usb_tx.get(channel_num as usize >> 1) {
-			Some((tx.clone(), (channel_num % 2) as u8))
-		} else {
-			None
-		}
+	fn get_device_channel(&'a self, channel_num: usize) -> Option<(&DeviceType<'a>, usize)> {
+		let mut channel_iter = ChannelIterator::new(&self.devices);
+		channel_iter.nth(channel_num)
 	}
 
 	pub fn play_note(&self, channel: u32, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<(), ()> {		
-		if let Some((tx, haptic_channel)) = self.get_device_channel(channel) {
-			match tx.send(USBControlTransfer::from_note(haptic_channel, note, instr, max_duration)) {
+		if let Some((device, haptic_channel)) = self.get_device_channel(channel as usize) {
+			let io_queue = device.get_io_queue();
+			let packet = DeviceType::packet_from_note(haptic_channel, note, instr, max_duration).expect("Note conversion should never fail");
+
+			match io_queue.send(packet) {
 				Ok(_) => Ok(()),
 				Err(_) => Err(()), // Device probably disconnected, should be de-listed
 			}
@@ -106,8 +59,11 @@ impl<'a> DeviceManager<'a> {
 	}
 
 	pub fn play_raw(&self, channel: u32, hi_period: u16, lo_period: u16, cycle_count: u16) -> Result<(), ()> {
-		if let Some((tx, haptic_channel)) = self.get_device_channel(channel) {
-			match tx.send(USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count)) {
+		if let Some((device, haptic_channel)) = self.get_device_channel(channel as usize) {
+			let io_queue = device.get_io_queue();
+			let packet = DeviceType::packet_from_raw(haptic_channel as u8, hi_period, lo_period, cycle_count);
+
+			match io_queue.send(packet) {
 				Ok(_) => Ok(()),
 				Err(_) => Err(()), // Device probably disconnected, should be de-listed
 			}
@@ -115,42 +71,37 @@ impl<'a> DeviceManager<'a> {
 			Err(()) // No such device
 		}
 	}
+}
 
-	fn send_control(device: &mut DeviceHandle, control: USBControlTransfer) -> Result<usize, ::libusb::Error> {
-		device.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
+struct ChannelIterator<'a> {
+	devices: &'a Vec<DeviceType<'a>>,
+	channel_id: usize,
+	device_id: usize,
+}
+
+impl<'a> ChannelIterator<'a> {
+	fn new(devices: &'a Vec<DeviceType<'a>>) -> Self {
+		Self {
+			devices,
+			channel_id: 0,
+			device_id: 0,
+		}
 	}
 }
 
-impl USBControlTransfer {
-	pub fn from_note(haptic_channel: u8, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> USBControlTransfer {
-		if let Some(duration) = max_duration {
-			let (hi_period, lo_period, cycle_count) = instr.get_periods_for_note_with_duration(note, duration);
-			USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, cycle_count)
+impl<'a> Iterator for ChannelIterator<'a> {
+	type Item = (&'a DeviceType<'a>, usize);
+
+	fn next(&mut self) -> Option<Self::Item>{
+		let device = self.devices.get(self.device_id)?;
+		if self.channel_id < device.channel_count() {
+			let return_val = (device, self.channel_id);
+			self.channel_id += 1;
+			Some(return_val)
 		} else {
-			let (hi_period, lo_period) = instr.get_periods_for_note(note);
-			USBControlTransfer::from_raw(haptic_channel, hi_period, lo_period, REPEAT_FOREVER)
-		}
-	}
-
-	pub fn from_raw(haptic_channel: u8, hi_period: u16, lo_period: u16, cycle_count: u16) -> USBControlTransfer {
-		let packet = SCFeedbackPacket {
-			haptic_channel,
-			hi_period,
-			lo_period,
-			cycle_count,
-			priority: NOTE_PRIORITY,
-		};
-
-		let timeout = Duration::from_secs(1);
-		let request_type = ::libusb::request_type(Direction::Out, RequestType::Class, Recipient::Interface);
-
-		USBControlTransfer{
-			request_type,
-			request: ::libusb_sys::LIBUSB_REQUEST_SET_CONFIGURATION,
-			value: 0x0300, // Still can't remember what this one was for
-			index: 2, // Interface number, IIRC
-			buf: packet.serialize(),
-			timeout
+			self.device_id += 1;
+			self.channel_id = 0;
+			self.next()
 		}
 	}
 }

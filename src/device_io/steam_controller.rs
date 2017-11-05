@@ -11,27 +11,49 @@ use music::{Note, Instrument};
 const NOTE_PRIORITY:u8 = 1;
 const REPEAT_FOREVER:u16 = 0x7FFF;
 
+type IO_Queue = (mpsc::SyncSender<USBControlTransfer>, crossbeam::ScopedJoinHandle<libusb::Error>);
+
 pub struct SteamController<'context> {
 	device: libusb::Device<'context>,
-	//tx: mpsc::SyncSender<USBControlTransfer>,
-	//rx_thread: crossbeam::ScopedJoinHandle<libusb::Error>,
+	io_queue: Option<IO_Queue>,
 }
 
+// I promise I won't have rx_thread used in a non-thread safe way.
+// TODO: Figure out a way to shut down the thread in case of error
+unsafe impl<'a> Sync for SteamController<'a>{}
+
 impl<'context> USBDeviceWrapper<'context> for SteamController<'context> {
-	fn device_matcher(device: libusb::Device<'context>) -> Option<Self> {
+	fn device_matcher(libusb_scope: &crossbeam::Scope<'context>, device: libusb::Device<'context>) -> Option<Self> {
+		// The returned device should be opened and ready to use
 		let desc = device.device_descriptor().ok()?;
 
 		if desc.vendor_id() == 0x28de && desc.product_id() == 0x1102 {
-			Some(SteamController{ device })
+			if let Ok(mut handle) = device.open() {
+				let device = SteamController{
+					device,
+					io_queue: None,
+				};
+
+				Some(device.init_io_queue(libusb_scope, handle))
+			} else {
+				None
+			}
 		} else {
 			None
 		}
 	}
 }
 
-impl<'context> MusicDevice<USBControlTransfer> for SteamController<'context> {
+impl<'context> MusicDevice for SteamController<'context> {
+	type PacketType = USBControlTransfer;
+	
 	fn get_io_queue(&self) -> mpsc::SyncSender<USBControlTransfer> {
-		unimplemented!()
+		if let Some((ref tx, _)) = self.io_queue {
+			tx.clone()
+		} else {
+			panic!("IO queue has not been opened")
+		}
+		
 	}
 
 	fn channel_count(&self) -> usize {
@@ -51,6 +73,15 @@ impl<'context> MusicDevice<USBControlTransfer> for SteamController<'context> {
 }
 
 impl<'context> SteamController<'context> {
+	fn init_io_queue(mut self, libusb_scope: &crossbeam::Scope<'context>, mut handle: libusb::DeviceHandle<'context>) -> Self {
+		handle.detach_kernel_driver(2).expect("Failed to detach kernel driver");
+		let (tx, rx): (mpsc::SyncSender<USBControlTransfer>, mpsc::Receiver<USBControlTransfer>) = mpsc::sync_channel(0);
+
+		let rx_thread = Self::start_rx_thread(libusb_scope, rx, handle);
+		self.io_queue = Some((tx, rx_thread));
+		self
+	}
+
 	pub fn packet_from_raw(haptic_channel: u8, hi_period: u16, lo_period: u16, cycle_count: u16) -> USBControlTransfer {
 		let packet = SCFeedbackPacket {
 			haptic_channel,
@@ -71,10 +102,6 @@ impl<'context> SteamController<'context> {
 			buf: packet.serialize(),
 			timeout
 		}
-	}
-
-	fn init_io_queue(&self) {
-		
 	}
 }
 
