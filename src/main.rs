@@ -40,7 +40,7 @@ fn run(config: &mut AppConfig) {
 
 	// *Almost* static thread lifetime, but must not outlive libusb
 	::crossbeam::scope(|scope| {
-		let device_manager = device_io::DeviceManager::new(&scope, &mut libusb_context);
+		let device_manager = device_io::DeviceManager::new(&mut libusb_context);
 
 		let mut timer = playback_timer::Timer::new(
 			device_manager,
@@ -62,14 +62,13 @@ mod tests {
 	#[test]
 	fn sound_tests() {
 		let mut libusb_context = ::libusb::Context::new().unwrap();
+		libusb_context.set_log_level(libusb::LogLevel::Debug);
 
-		::crossbeam::scope(|scope| {
-			let mut dm = DeviceManager::new(&scope, &mut libusb_context);
+		let mut dm = DeviceManager::new(&mut libusb_context);
 
-			test_beep(&dm);
-			::std::thread::sleep(Duration::new(1, 0));
-			test_slow_rumble(&dm);
-		});
+		test_beep(&dm);
+		::std::thread::sleep(Duration::new(1, 0));
+		test_slow_rumble(&dm);
 	}
 	
 	fn test_beep(dm: &DeviceManager) {

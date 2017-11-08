@@ -1,6 +1,5 @@
 use super::device::{USBDeviceWrapper, MusicDevice, USBControlTransfer, InstrumentError};
 use libusb;
-use crossbeam;
 use std::time::Duration;
 use byteorder::{LittleEndian, WriteBytesExt};
 use music::{Note, Instrument};
@@ -11,28 +10,30 @@ const NOTE_PRIORITY:u8 = 1;
 const REPEAT_FOREVER:u16 = 0x7FFF;
 
 pub struct SteamController<'context> {
-	device: libusb::Device<'context>,
+	// Handle is the "active" device, the Device reference isn't needed after that
 	handle: libusb::DeviceHandle<'context>,
 }
 
-// I promise I won't have rx_thread used in a non-thread safe way.
-// TODO: Figure out a way to acknowledge that the thread has shut down
-unsafe impl<'a> Sync for SteamController<'a>{}
-
 impl<'context> USBDeviceWrapper<'context> for SteamController<'context> {
-	fn device_matcher(libusb_scope: &crossbeam::Scope<'context>, device: libusb::Device<'context>) -> Option<Self> {
-		let desc = device.device_descriptor().ok()?;
+	fn match_rules(device: &libusb::Device<'context>) -> Result<bool, libusb::Error> {
+		let desc = device.device_descriptor()?;
 
-		if desc.vendor_id() == 0x28de && desc.product_id() == 0x1102 {
-			let mut handle = device.open().ok()?;
-			handle.detach_kernel_driver(2).ok()?;
-			
-			Some(SteamController{
-				device,
-				handle,
-			})
-		} else {
-			None
+		return Ok(desc.vendor_id() == 0x28de && desc.product_id() == 0x1102);
+	}
+
+	fn device_matcher(device: &libusb::Device<'context>) -> Result<Option<Self>, libusb::Error> {
+		match Self::match_rules(device) {
+			Ok(true) => {
+				let mut handle = device.open()?;
+				handle.claim_interface(2)?;
+				if handle.kernel_driver_active(2)? { handle.detach_kernel_driver(2)?; }
+				
+				Ok(Some(SteamController{
+					handle,
+				}))
+			},
+			Ok(false) => Ok(None),
+			Err(err) => Err(err),
 		}
 	}
 }

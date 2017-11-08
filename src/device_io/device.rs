@@ -2,7 +2,6 @@ use libusb::{Device, DeviceHandle, Error as USBError};
 use std::time::Duration;
 use std::error::Error;
 use std::fmt;
-use crossbeam;
 use music::{Note, Instrument};
 
 pub trait MusicDevice {
@@ -16,7 +15,8 @@ pub trait MusicDevice {
 }
 
 pub(super) trait USBDeviceWrapper<'context> : Sized {
-	fn device_matcher(libusb_scope: &crossbeam::Scope<'context>, device: Device<'context>) -> Option<Self>;
+	fn device_matcher(device: &Device<'context>) -> Result<Option<Self>, USBError>;
+	fn match_rules(device: &Device<'context>) -> Result<bool, USBError>;
 	fn send_control(handle: &DeviceHandle<'context>, control: USBControlTransfer) -> Result<usize, USBError> {
 		handle.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
 	}

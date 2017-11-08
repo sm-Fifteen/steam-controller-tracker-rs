@@ -1,17 +1,10 @@
 mod device;
 mod steam_controller;
 
-/// Touch feedback is 0, priority 1 means notes don't
-/// get interrupted when the user touches the controller
-const NOTE_PRIORITY:u8 = 1;
-const REPEAT_FOREVER:u16 = 0x7FFF;
-
-use libusb::{Direction,RequestType,Recipient, Device, DeviceHandle};
 use libusb::Context;
-use self::device::{USBDeviceWrapper, MusicDevice, USBControlTransfer};
+use self::device::{USBDeviceWrapper, MusicDevice};
 use self::steam_controller::SteamController;
 use std::time::Duration;
-use crossbeam::Scope;
 use music::{Note, Instrument};
 
 // TODO: Replace with MusicDevices (boxed pointers?)
@@ -23,13 +16,18 @@ pub struct DeviceManager<'a> {
 }
 
 impl<'a> DeviceManager<'a> {
-	pub fn new(libusb_scope: &Scope<'a>, libusb_context: &'a mut Context) -> DeviceManager<'a> {
+	pub fn new(libusb_context: &'a mut Context) -> DeviceManager<'a> {
 		let mut iter_list = libusb_context.devices().unwrap();
 		let mut iter = iter_list.iter();
 
 		let matches = iter.filter_map(|device| {
 			// TODO : Try other devices here
-			SteamController::device_matcher(&libusb_scope, device)
+			match SteamController::device_matcher(&device) {
+				Ok(dev) => dev,
+				Err(err) => {
+					panic!("USB error while matching devices : \"{}\"", err);
+				}
+			}
 		});
 
 		DeviceManager {
@@ -49,7 +47,7 @@ impl<'a> DeviceManager<'a> {
 
 			match device.send_packet(packet) {
 				Ok(_) => Ok(()),
-				Err(err) => panic!("{}", err), // FIXME
+				//Err(err) => panic!("{}", err), // FIXME : Find a clean way to return the various error types that can be returned
 				Err(_) => Err(()), // Device probably disconnected, should be de-listed
 			}
 		} else {
@@ -63,7 +61,7 @@ impl<'a> DeviceManager<'a> {
 
 			match device.send_packet(packet) {
 				Ok(_) => Ok(()),
-				Err(err) => panic!("{}", err), // FIXME
+				//Err(err) => panic!("{}", err), // FIXME
 				Err(_) => Err(()), // Device probably disconnected, should be de-listed
 			}
 		} else {
