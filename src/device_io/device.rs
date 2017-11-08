@@ -1,5 +1,4 @@
-use libusb::{Device, DeviceHandle};
-use std::sync::mpsc;
+use libusb::{Device, DeviceHandle, Error as USBError};
 use std::time::Duration;
 use std::error::Error;
 use std::fmt;
@@ -8,46 +7,41 @@ use music::{Note, Instrument};
 
 pub trait MusicDevice {
 	type PacketType;
+	type IOErrorType: Error;
 
-	fn get_io_queue(&self) -> mpsc::SyncSender<Self::PacketType>;
+	fn init(&mut self) -> Result<(), Self::IOErrorType>;
+	fn send_packet(&self, transfer: USBControlTransfer) -> Result<(), Self::IOErrorType>;
 	fn channel_count(&self) -> usize;
 	fn packet_from_note(channel: usize, note: &Note, instr: &Instrument, max_duration: Option<Duration>) -> Result<Self::PacketType, InstrumentError>;
 }
 
-pub trait USBDeviceWrapper<'context> : Sized {
+pub(super) trait USBDeviceWrapper<'context> : Sized {
 	fn device_matcher(libusb_scope: &crossbeam::Scope<'context>, device: Device<'context>) -> Option<Self>;
-
-	fn send_control(device: &DeviceHandle, control: USBControlTransfer) -> Result<usize, ::libusb::Error> {
-		device.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
-	}
-
-	fn start_rx_thread(libusb_scope: &crossbeam::Scope<'context>, rx: mpsc::Receiver<USBControlTransfer>, handle: DeviceHandle<'context>) -> crossbeam::ScopedJoinHandle<::libusb::Error> {
-		libusb_scope.spawn(move || {
-			let final_val = loop {
-				if let Ok(control) = rx.recv() {
-					let status = Self::send_control(&handle, control).err();
-
-					if let Some(err) = status {
-						break err;
-					}
-				} else {
-					// tx has been freed
-					break ::libusb::Error::Success;
-				}
-			};
-
-			final_val
-		})
+	fn send_control(handle: &DeviceHandle<'context>, control: USBControlTransfer) -> Result<usize, USBError> {
+		handle.write_control(control.request_type, control.request, control.value, control.index, control.buf.as_slice(), control.timeout)
 	}
 }
 
 pub struct USBControlTransfer {
-	pub request_type: u8,
-	pub request: u8,
-	pub value: u16,
-	pub index: u16,
-	pub buf: Vec<u8>,
-	pub timeout: Duration,
+	request_type: u8,
+	request: u8,
+	value: u16,
+	index: u16,
+	buf: Vec<u8>,
+	timeout: Duration,
+}
+
+impl USBControlTransfer {
+	pub fn new(request_type: u8, request: u8, value: u16, index: u16, buf: Vec<u8>, timeout: Duration) -> USBControlTransfer {
+		Self {
+			request_type,
+			request,
+			value,
+			index,
+			buf,
+			timeout,
+		}
+	}
 }
 
 #[derive(Debug)]
