@@ -25,7 +25,6 @@ impl<'context> USBDeviceWrapper<'context> for SteamController<'context> {
 		match Self::match_rules(device) {
 			Ok(true) => {
 				let mut handle = device.open()?;
-				handle.claim_interface(2)?;
 				if handle.kernel_driver_active(2)? { handle.detach_kernel_driver(2)?; }
 				
 				Ok(Some(SteamController{

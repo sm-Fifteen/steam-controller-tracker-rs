@@ -90,15 +90,18 @@ impl<'a> Iterator for ChannelIterator<'a> {
 	type Item = (&'a DeviceType<'a>, usize);
 
 	fn next(&mut self) -> Option<Self::Item>{
-		let device = self.devices.get(self.device_id)?;
-		if self.channel_id < device.channel_count() {
-			let return_val = (device, self.channel_id);
-			self.channel_id += 1;
-			Some(return_val)
+		if let Some(device) = self.devices.get(self.device_id) {
+			if self.channel_id < device.channel_count() {
+				let return_val = (device, self.channel_id);
+				self.channel_id += 1;
+				Some(return_val)
+			} else {
+				self.device_id += 1;
+				self.channel_id = 0;
+				self.next()
+			}
 		} else {
-			self.device_id += 1;
-			self.channel_id = 0;
-			self.next()
-		}
+			None
+		}	
 	}
 }
