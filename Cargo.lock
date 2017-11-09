@@ -116,7 +116,6 @@ dependencies = [
  "clap 2.26.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libusb 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libusb-sys 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "openmpt 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

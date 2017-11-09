@@ -25,7 +25,9 @@ impl<'context> USBDeviceWrapper<'context> for SteamController<'context> {
 		match Self::match_rules(device) {
 			Ok(true) => {
 				let mut handle = device.open()?;
+				// Sending control transfers to an interface means it must be freed and (ideally) claimed
 				if handle.kernel_driver_active(2)? { handle.detach_kernel_driver(2)?; }
+				handle.claim_interface(2);
 				
 				Ok(Some(SteamController{
 					handle,
@@ -75,16 +77,21 @@ impl<'context> SteamController<'context> {
 			priority: NOTE_PRIORITY,
 		};
 
-		let timeout = Duration::from_secs(1);
 		let request_type = ::libusb::request_type(libusb::Direction::Out, libusb::RequestType::Class, libusb::Recipient::Interface);
 
+		// http://www.usb.org/developers/hidpage/HID1_11.pdf#page=62
+		// USB HID SET_REPORT request on interface 2 (Wireless dongle would be iface 1-4)
+		// According to the HID descriptors for iface 2, report type 3 (numbering starts at 1) is a "Feature" report.
+		// "Only Input reports are sent via the Interrupt In pipe. Feature and Output reports must be initiated by the host via the Control pipe [...]."
+		// The descriptors do not list any Report IDs, meaning there is only one : ID 0.
+		// Transfer size : Report Size * Report Count = 8 bits (0-padded to 8) * 64 reports per transfer
 		USBControlTransfer::new(
-			request_type,
-			::libusb_sys::LIBUSB_REQUEST_SET_CONFIGURATION, // request
-			0x0300, // value: Still can't remember what this one was for
-			2, // index: Interface number, IIRC
+			request_type, // bmRequestType : "TO, CLASS, INTERFACE"
+			0x09, // request : "SET_REPORT" (iface 2 is USB HID), not to be confused with "SET_CONFIGURATION" (0x09 on a "TO, CLASS, DEVICE")
+			0x0300, // value: On a SET_REPORT, MSB is the report type (3) and LSB is the report ID (0)
+			2, // index: Interface number
 			packet.serialize(),
-			timeout
+			Duration::from_secs(1)
 		)
 	}
 }
